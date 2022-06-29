@@ -1,2 +1,2 @@
-# auto-dss
+# AutoDSS
 Experiments on autoDSS
