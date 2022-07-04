@@ -72,7 +72,7 @@ class AutoSuggester(object):
         sampled_candidate_pairs.append(self.join_set)
 
         logger.info('Number of original candidate pairs: {}'.format(len(raw_candidate_pairs)))
-        logger.info('Number of pruned candidate paris: {}'.format(len(sampled_candidate_pairs)))
+        logger.info('Number of pruned candidate pairs: {}'.format(len(sampled_candidate_pairs)))
 
         # cast everything to tuple to avoid hashing error with dict later
         return totuple(sampled_candidate_pairs)
@@ -235,7 +235,7 @@ class AutoSuggester(object):
 
                 else:
                     if col_2 == 'created_at':
-                        logger.warning('Skipping: ', col_2)
+                        logger.warning('Skipping: {}'.format(col_2))
                     continue
 
             result_dict['col_list_1'].append(col_list_1)
