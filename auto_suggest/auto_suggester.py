@@ -1,20 +1,34 @@
 # -*- coding: utf-8 -*-
 import itertools
 import json
+import random
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import logging
-from auto_suggest.auto_suggest_utils import compute_jaccard_containment, compute_jaccard_similarity
+from auto_suggest.auto_suggest_utils import compute_jaccard_containment, compute_jaccard_similarity, totuple
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='auto-suggest | %(levelname)s - %(message)s')
 
 class AutoSuggester(object):
 
-    def __init__(self, df1, df2, max_num_components=1):
+    def __init__(self, df1, df2, join_set, max_num_components=1):
+        """
+
+        :param df1: dataframe
+            Left dataset
+        :param df2: dataframe
+            Right dataset
+        :param join_set: tuple of list
+            Join column mapping
+        :param max_num_components: int
+            Max size of the join set
+        """
+
         self.df1 = df1
         self.df2 = df2
+        self.join_set = join_set
         self.column_set_1 = df1.columns.tolist()
         self.column_set_2 = df2.columns.tolist()
         self.max_num_components = max_num_components
@@ -24,9 +38,11 @@ class AutoSuggester(object):
         self._check()
 
     def _check(self):
+        if len(self.join_set) != 2 or not isinstance(self.join_set[0], (list, tuple)) or not isinstance(self.join_set[1], (list, tuple)):
+            raise ValueError('Join set must be a list of list [[colA_table_1, colB_table_2], [colC_table2, colD_table_2]]')
         pass
 
-    def _prune_candidate_pairs(self, raw_candidate_pairs):
+    def _prune_candidate_pairs(self, raw_candidate_pairs, max_num_pair = 100):
         """
         Remove pairs of candidate that have different dtypes
         """
@@ -38,30 +54,36 @@ class AutoSuggester(object):
             col_list_1 = candidate_pair[0]
             col_list_2 = candidate_pair[1]
 
+            if (col_list_1 == self.join_set[0]) and (col_list_2 == self.join_set[1]):
+                # don't add the true join columns in the candidate set yet
+                continue
+
             for col_1, col_2 in zip(col_list_1, col_list_2):
-                try:
-                    if self.df1[col_1].dtypes.name != self.df2[col_2].dtypes.name:
-                        keep = False
-                        break
-                except Exception as e:
-                    logger.warning(col_1, col_2)
-                    raise ValueError('stop')
+                if self.df1[col_1].dtypes.name != self.df2[col_2].dtypes.name:
+                    keep = False
+                    break
 
             if keep:
                 pruned_candidate_pairs.append(candidate_pair)
 
-        logger.info('Number of original candidate pairs: {}'.format(len(raw_candidate_pairs)))
-        logger.info('Number of pruned candidate paris: {}'.format(len(pruned_candidate_pairs)))
+        k = max_num_pair if max_num_pair < len(pruned_candidate_pairs) else len(pruned_candidate_pairs)
+        sampled_idx = random.sample(range(len(pruned_candidate_pairs)), k)
+        sampled_candidate_pairs = np.array(pruned_candidate_pairs)[sampled_idx].tolist()
+        sampled_candidate_pairs.append(self.join_set)
 
-        return pruned_candidate_pairs
+        logger.info('Number of original candidate pairs: {}'.format(len(raw_candidate_pairs)))
+        logger.info('Number of pruned candidate paris: {}'.format(len(sampled_candidate_pairs)))
+
+        # cast everything to tuple to avoid hashing error with dict later
+        return totuple(sampled_candidate_pairs)
 
     def _generate_all_pairs(self):
 
         all_pairs = []
         for num_component in range(1, self.max_num_components + 1):
-            c1 = list(itertools.combinations(self.column_set_1, num_component))
-            c2 = list(itertools.combinations(self.column_set_2, num_component))
-            tmp_pairs = list(itertools.product(c1, c2))
+            c1 = tuple(itertools.combinations(self.column_set_1, num_component))
+            c2 = tuple(itertools.combinations(self.column_set_2, num_component))
+            tmp_pairs = tuple(itertools.product(c1, c2))
             all_pairs.extend(tmp_pairs)
 
         return all_pairs
@@ -105,8 +127,15 @@ class AutoSuggester(object):
                 num_distinct_tuple_2 = len(self.df2.loc[:, col_list_2].drop_duplicates())
                 cache_dict_2[col_list_2] = num_distinct_tuple_2
 
-            distinct_value_ratio_1 = num_distinct_tuple_1 / len(self.df1)
-            distinct_value_ratio_2 = num_distinct_tuple_2 / len(self.df2)
+            if len(self.df1) > 0:
+                distinct_value_ratio_1 = num_distinct_tuple_1 / len(self.df1)
+            else:
+                distinct_value_ratio_1 = None
+
+            if len(self.df2) > 0:
+                distinct_value_ratio_2 = num_distinct_tuple_2 / len(self.df2)
+            else:
+                distinct_value_ratio_2 = None
 
             result_dict['col_list_1'].append(col_list_1)
             result_dict['col_list_2'].append(col_list_2)
@@ -266,8 +295,15 @@ class AutoSuggester(object):
             average_absolute_leftness_1 = np.mean(indexes_col_list_1)
             average_absolute_leftness_2 = np.mean(indexes_col_list_2)
 
-            average_relative_leftness_1 = np.mean(indexes_col_list_1 / len(self.df1.columns))
-            average_relative_leftness_2 = np.mean(indexes_col_list_2 / len(self.df2.columns))
+            if len(self.df1.columns) > 0:
+                average_relative_leftness_1 = np.mean(indexes_col_list_1 / len(self.df1.columns))
+            else:
+                average_relative_leftness_1 = None
+
+            if len(self.df2.columns) > 0:
+                average_relative_leftness_2 = np.mean(indexes_col_list_2 / len(self.df2.columns))
+            else:
+                average_relative_leftness_2 = None
 
             result_dict['col_list_1'].append(col_list_1)
             result_dict['col_list_2'].append(col_list_2)
