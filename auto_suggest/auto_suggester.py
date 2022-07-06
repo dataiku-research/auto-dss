@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO, format='auto-suggest | %(levelname)s - %
 
 class AutoSuggester(object):
 
-    def __init__(self, df1, df2, join_set, max_num_components=1):
+    def __init__(self, df1, df2, join_set, max_num_components=1, max_num_pairs_per_join=10):
         """
 
         :param df1: dataframe
@@ -32,6 +32,7 @@ class AutoSuggester(object):
         self.column_set_1 = df1.columns.tolist()
         self.column_set_2 = df2.columns.tolist()
         self.max_num_components = max_num_components
+        self.max_num_pairs_per_join = max_num_pairs_per_join
         self.numerical_dtypes = ['number', 'datetimetz', 'datetime']
 
         self.candidate_pairs = self._generate_candidate_pairs()
@@ -42,7 +43,7 @@ class AutoSuggester(object):
             raise ValueError('Join set must be a list of list [[colA_table_1, colB_table_2], [colC_table2, colD_table_2]]')
         pass
 
-    def _prune_candidate_pairs(self, raw_candidate_pairs, max_num_pair = 100):
+    def _prune_candidate_pairs(self, raw_candidate_pairs):
         """
         Remove pairs of candidate that have different dtypes
         """
@@ -66,7 +67,7 @@ class AutoSuggester(object):
             if keep:
                 pruned_candidate_pairs.append(candidate_pair)
 
-        k = max_num_pair if max_num_pair < len(pruned_candidate_pairs) else len(pruned_candidate_pairs)
+        k = self.max_num_pairs_per_join if self.max_num_pairs_per_join < len(pruned_candidate_pairs) else len(pruned_candidate_pairs)
         sampled_idx = random.sample(range(len(pruned_candidate_pairs)), k)
         sampled_candidate_pairs = np.array(pruned_candidate_pairs)[sampled_idx].tolist()
         sampled_candidate_pairs.append(self.join_set)
